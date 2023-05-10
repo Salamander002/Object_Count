@@ -108,7 +108,7 @@ gen_tens
             SUBWF     	Temp,w
             BTFSS     	STATUS,C        ;judge if the result bigger than 10
             GOTO      	gen_ones        ;no,get the Entries bit result
-            MOVWF     	Temp          ;yes,result keep in TEMP
+            MOVWF     	Temp            ;yes,result keep in TEMP
             INCF      	Tens,f          ;ten bit add 1
             GOTO      	gen_tens        ;turn  to continue get ten bit
 gen_ones
