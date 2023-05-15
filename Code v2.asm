@@ -7,15 +7,13 @@
 ;            testing version.                                        ;
 ;Version 1 : I can probably call it a testing version		     ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;TODO:                                                               ;
-;	Test the code					             ;  
-;	Do we want Hardware/Software pause button		     ;
+;TODO:                                                               ; 
 ;	Make better comments					     ;
 ;	Cap Cmin to 00 and Cmax to 99				     ;
-;	Detail the subrotines					     ;
+;	Detail the subroutiens					     ;
 ;	there's probably ton of comments syntax error...	     ;
-;	Last few lines of intitial				     ;
 ;	Naming of variables and subroutiens			     ;
+;	Edit the GenBCD	subroutien				     ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;System has to count/uncount objects that pass through the two infra-;
 ;red sensors. displays the count value on two 7 segments displays.   ;
@@ -31,7 +29,7 @@
 ;       1 LED light connected to pin RB6                             ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;                           Code convention                          ;
-;Label		INST		field1, field2								 ;
+;Label		INST		field1, field2			     ;
 ;Labels use PascalCase (first letter of each word is capitalized)    ;
 ;Instructions have all letters capitalized                           ;
 ;Variable names and pins defined also use PascalCase                 ;
@@ -39,6 +37,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;                           Start of Code                            ;
 	    include		"p16f877A.inc"
+	    ; CONFIG
+	    ; __config 0x3F39
+	    __CONFIG _FOSC_XT & _WDTE_OFF & _PWRTE_OFF & _BOREN_OFF & _LVP_OFF & _CPD_OFF & _WRT_OFF & _CP_OFF
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;                         Declaring Variables                        ;
             cblock 0x20
@@ -135,15 +136,27 @@ Initial
 	    MOVWF	TMR1H
 	    
 	    ;Do I have to clear PORTB?
+	    
+	    clrf	PORTB
 	    CLRF	TMR2
 	    CLRF	Count			;Start From 0?			
             CLRF	State			;the only one that have to be cleared
-            CLRF	CMin			;what is CMin
-            CLRF	CMax			;what is CMax
+            ;CLRF	CMin			;what is CMin
+	    MOVLW	.5
+	    MOVWF	CMin
+            ;CLRF	CMax			;what is CMax
+	    MOVLW	.10
+	    MOVWF	CMax
+	    
+	    MOVLW	b'00001000'		;one of them has to start on
+	    MOVWF	PORTB
+	    
+	    
+
 ;the program must always start from 00 not Cmin with our implementaion, because BCD
 ;doesn't update unless we increment/decrement, we can initialize the Units/Digits/Count
 ;to be Cmin for it to work
-
+	    RETURN
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ObjectFound;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -199,7 +212,9 @@ TURNON
 GenBCD
             BANKSEL	PORTA
             MOVF        Count,w			
-            MOVWF       Temp			
+            MOVWF       Temp
+	    CLRF	Tens			;DO IT BETTER.
+;change this implementation
 gen_tens
             MOVLW     	.10			;sub 10,result keep in W
             SUBWF     	Temp,w
@@ -242,23 +257,28 @@ Sensors
 	    GOTO	Left
 	    
 Right	    
-	    MOVF State, W			;Complementing VarR without checking PORTB SenseRight
-	    XORLW b'00010000'
-	    ANDWF State, F
+	    MOVLW b'00010000'			;Complementing VarR without checking PORTB SenseRight
+	    XORWF State, F
 	    BTFSS	State, VarL	
 	    GOTO	EnableTimer2		
-	    BCF		State, LTR
-	    BSF		State, Detected
+	    BSF		State, LTR
+	    BSF		State, Detected		
+	    BCF		T2CON, TMR2ON		;DISABLE TIMER2
+	    BCF		State, VarL
+	    BCF		State, VarR
+	    
 	    RETURN				;return to ISR
 	   
 Left	    
-	    MOVF State, W			;Complement VarL
-	    XORLW b'00001000'
-	    ANDWF State, F	
+	    MOVLW	b'00001000'		;Complement VarL
+	    XORWF	State, F	
 	    BTFSS	State, VarR
 	    GOTO	EnableTimer2
-	    BSF		State, LTR
+	    BCF		State, LTR
 	    BSF		State, Detected
+	    BCF		T2CON, TMR2ON		;DISABLE TIMER2
+	    BCF		State, VarL
+	    BCF		State, VarR
 	    RETURN				;return to ISR
 	    	    
 EnableTimer2
@@ -272,7 +292,13 @@ DisplayUpdate
 	    MOVLW	0X06			;Reinitialize TMR0
 	    MOVWF	TMR0
 	    
-	    btfss	State, Display
+	    MOVLW b'00011000'			;Complement Display
+	    XORWF PORTB, F
+;the complement HAS to be here for the 7 segment to work probably
+;2us between the MOVWF PORTD and the complement is not enough for the
+;7segment to display accurate reslults.
+	    
+	    BTFSC	PORTB, UnitsSelect
 	    GOTO	UnitsDisplay
 	    MOVF	Tens, W
 	    GOTO	Send	    
@@ -281,9 +307,8 @@ UnitsDisplay
 Send	    
 	    CALL	Table
 	    MOVWF	PORTD
-	    MOVF State, W			;Complement Display
-	    XORLW b'00000001'
-	    ANDWF State, F
+	    ;MOVLW b'00011000'			;Complement Display
+	    ;XORWF PORTB, F
 	    RETURN
 	    
 ;************************** Lookup Table ************************
@@ -313,17 +338,15 @@ HalfSecDelay
 	    MOVLW	0X0B
 	    MOVWF	TMR1H
 	    DECFSZ	HalfSecCounter, F
-	    GOTO	Zero
-	    MOVF PORTB, W			;Complement Led
-	    XORLW b'01000000'
-	    ANDWF PORTB, F
-	    RETURN
-	    
+	    GOTO	Continue    
 Zero	    
-	    MOVF PORTB,				;Complement Led and Buzzer
-	    XORLW b'01100000'
-	    ANDWF PORTB, F
+	    MOVLW b'01100000'			;Complement Led and Buzzer
+	    XORWF PORTB, F
 	    BCF		T1CON, TMR1ON		;check the banks
+	    RETURN
+Continue	    
+	    MOVLW b'01000000'			;Complement Led
+	    XORWF PORTB, F
 	    RETURN
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;LeftRightClear;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
