@@ -3,18 +3,19 @@
 ;                     Using PIC 16F877A                              ;
 ;         Version 0 by Mohammad Salameh on May 10th 2023             ;
 ;         Version 1 by Laith Hamdan on May 15th 2023                 ;
+;	  Version 1.1 by Laith Hamdan on May 16th 2023		     ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;Version 0 : built the basic structure for the code, not a final or  ;
 ;            testing version.                                        ;
-;Version 1 : Testing version.		     ;
+;Version 1 : Testing version.					     ;
+;Version 1 : Semi-Final version.					     ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;TODO:                                                               ; 
 ;	Make better comments					     ;
-;	Cap Cmin to 00 and Cmax to 99				     ;
 ;	Detail the subroutines					     ;
 ;	there's probably ton of comments syntax error...	     ;
 ;	Naming of variables and subroutines			     ;
-;	Edit the GenBCD	subroutines				     ;
+;	Optimization						     ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;System has to count/uncount objects that pass through the two infra-;
 ;red sensors. displays the count value on two 7 segments displays.   ;
@@ -79,26 +80,35 @@ VarR        equ         4           ;bit 4 of State
 Pause       equ         7           ;bit 7 of State
 ;version 0 pins ends here, next versions add below and add comment
 PauseButton equ         7           ;Pin 7 of PortB == RB7
-;
-;                                                                    ;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;			    Macro Assignments			     ;
+;Copied from Exp8's labSheet 
+push	    macro
+	    movwf		WTemp		;WTemp must be reserved in all banks
+	    swapf		STATUS,W	;store in W without affecting status bits
+	    banksel		StatusTemp	;select StatusTemp bank
+	    movwf		StatusTemp	;save STATUS
+	    endm
+
+
+pop	    macro
+	    banksel		StatusTemp	;point to StatusTemp bank
+	    swapf		StatusTemp,W	;unswap STATUS nibbles into W	
+	    movwf		STATUS		;restore STATUS (which points to where W was stored)
+	    swapf		WTemp,F		;unswap W nibbles
+	    swapf		WTemp,W		;restore W without affecting STATUS
+	    endm
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;                         Start of Program                           ;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
+; Start of executable code
             org 0x00
             GOTO        Main
             org 0x04
             GOTO        ISR
 
-Main        
-	    CALL	Initial
-MainLoop    
-            BTFSC       State, Detected         ;skip if no object
-            CALL        ObjectFound
-            GOTO        MainLoop
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;Initial;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;Intializes the configuration bits and ports for the program to start;
-
 Initial	    
 	    BANKSEL	TRISD
 	    CLRF	TRISD			;Output
@@ -114,8 +124,8 @@ Initial
 ;Interrupt on rising edge of RB0, 1:4 prescale
 	    
 	    BCF		PIR1, TMR1IF
-	    BCF		PIR2, TMR2IF		;All Flags cleared
-	    BSF		PIE2, TMR2IE		;enable timer2, we want 32 post*pre scale
+	    BCF		PIR1, TMR2IF		;All Flags cleared
+	    BSF		PIE1, TMR2IE		;enable timer2, we want 32 post*pre scale
 	    BSF		PIE1, TMR1IE
 
 	    MOVLW	.244			;244 + 1 = 245
@@ -140,29 +150,31 @@ Initial
 	    MOVLW	0X0B
 	    MOVWF	TMR1H
 	    
-	    ;Do I have to clear PORTB?
-	    
-	    clrf	PORTB
-	    CLRF	TMR2
-	    CLRF	Count			;Start From 0?			
-            CLRF	State			;the only one that have to be cleared
-            ;CLRF	CMin			;what is CMin
-	    MOVLW	.5
-	    MOVWF	CMin
-            ;CLRF	CMax			;what is CMax
-	    MOVLW	.10
-	    MOVWF	CMax
-	    
-	    MOVLW	b'00001000'		;one of them has to start on
+	    MOVLW	b'00001000'		;one of the displays has to be on
 	    MOVWF	PORTB
 	    
+	    MOVLW	.5
+	    MOVWF	CMin
+	    MOVLW	.10
+	    MOVWF	CMax
+	    INCF	CMax			;CMax still 10
+;but since we check the carry if set, to determince if we're out of in range,
+;both Count > CMax, and Count = CMax, will result in carry = 1, when checking
+;the easiest way to solve this is to increment CMax in Initial.
 	    
-
-;the program must always start from 00 not Cmin with our implementaion, because BCD
-;doesn't update unless we increment/decrement, we can initialize the Units/Digits/Count
-;to be Cmin for it to work
+	    CLRF	TMR2
+	    CLRF	Count
+            CLRF	State
+	    CLRF	OverflowCount
 	    RETURN
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;Main;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+Main        
+	    CALL	Initial
+MainLoop    
+            BTFSC       State, Detected         ;skip if no object
+            CALL        ObjectFound
+            GOTO        MainLoop
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;ObjectFound;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;this subroutine determines whether to Decrement or Increment the count                                        
@@ -174,24 +186,30 @@ ObjectFound
             GOTO        Decrement
 	    
 Increment   
-	    INCF        Count, f
+	    INCF        Count, F
+	    MOVLW	.100
+	    SUBWF       Count, W
+	    BTFSC       STATUS,C        
+            GOTO        Decrement
 	    GOTO	BCD
 	    
 Decrement
-	    DECF        Count, f
+	    DECF        Count, F
+	    BTFSC	Count, .7		;Check if the MSB is set
+	    GOTO	Increment
 	    
 BCD
 	    CALL	GenBCD
 	    
 Test
-            MOVF        CMax , w
-            SUBWF       Count, w
+            MOVF        CMax , W
+            SUBWF       Count, W
             BTFSC       STATUS,C        
             GOTO        OutRange	
 	    
 TestIfInRange
-	    MOVF        CMin , w
-            SUBWF       Count, w
+	    MOVF        CMin , W
+            SUBWF       Count, W
             BTFSS       STATUS,C         
             GOTO        OutRange
 	    
@@ -202,31 +220,32 @@ InRange
 OutRange
 	    MOVLW	.3
 ;If we want the Led to Flash more times than 3, we don't make it flash more than
-;1.5s, it's already long, we edit timer 1 to be 0.25 sec
+;1.5s, it's already long, we edit timer 1 to be 0.25 sec,
+;HalfSecCounter and Timer1 ISR.
 	    
 TURNON					
 	    MOVWF	HalfSecCounter
-	    BSF		PORTB, Buzzer		;check if you need to banksel
+	    BSF		PORTB, Buzzer
 	    BSF		PORTB, Led
-	    BSF		T1CON, TMR1ON		;check the banks
-	    RETURN				;returns to main
+	    BSF		T1CON, TMR1ON
+	    RETURN				;Returns to Main
 	    
 ;;;;;;;;;;;;;;;;;;;;;;;;;GenBCD;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;Converts counter's 8-bit value to 2 BCD digits, Units and Tens      ;
 ;Copied from Exp7's labSheet                                         ;
 GenBCD
             BANKSEL	PORTA
-            MOVF        Count,w			
+            MOVF        Count,W			
             MOVWF       Temp
-	    CLRF	Tens			;DO IT BETTER.
-;change this implementation
+	    CLRF	Tens			;Must Clear the Tens.
+
 gen_tens
             MOVLW     	.10			;sub 10,result keep in W
-            SUBWF     	Temp,w
+            SUBWF     	Temp,W
             BTFSS     	STATUS,C	        ;judge if the result bigger than 10
             GOTO      	gen_ones	        ;no,get the Entries bit result
             MOVWF     	Temp		        ;yes,result keep in TEMP
-            INCF      	Tens,f			;ten bit add 1
+            INCF      	Tens,F			;ten bit add 1
             GOTO      	gen_tens		;turn  to continue get ten bit
 gen_ones
             MOVF      	Temp,W
@@ -238,21 +257,18 @@ gen_ones
 ;                   Interrupts code starts here                      ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ISR
-	    MOVWF	ContextW		;Context Saving
-	    SWAPF	STATUS, W
-	    MOVWF	ContextS
+	    push
 	    BTFSC	INTCON, INTF		;External Interrupt has higher priority
 	    CALL	Sensors
 	    BTFSC	INTCON, TMR0IF		
 	    CALL	DisplayUpdate
 	    BTFSC	PIR1, TMR1IF
 	    CALL	HalfSecDelay
-	    BTFSC	PIR2, TMR2IF
+	    BTFSC	PIR1, TMR2IF
 	    CALL	LeftRightClear		
-	    SWAPF	ContextS, W		;Context Retrieval
-	    MOVWF	STATUS
-	    MOVF	ContextW, W
+	    pop
 	    RETFIE 
+	    
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;Sensors;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;Checks SenseLeft, Complement VarL/VarR
 ;Enable Timer2 module or update the state
@@ -262,17 +278,12 @@ Sensors
 	    GOTO	Left
 	    
 Right	    
-	    MOVLW b'00010000'			;Complementing VarR without checking PORTB SenseRight
-	    XORWF State, F
+	    MOVLW	b'00010000'		;Complementing VarR without checking PORTB SenseRight
+	    XORWF	State, F
 	    BTFSS	State, VarL	
-	    GOTO	EnableTimer2		
+	    GOTO	EnableTimer2
 	    BSF		State, LTR
-	    BSF		State, Detected		
-	    BCF		T2CON, TMR2ON		;DISABLE TIMER2
-	    BCF		State, VarL
-	    BCF		State, VarR
-	    
-	    RETURN				;return to ISR
+	    GOTO	DisableTimer2
 	   
 Left	    
 	    MOVLW	b'00001000'		;Complement VarL
@@ -280,15 +291,21 @@ Left
 	    BTFSS	State, VarR
 	    GOTO	EnableTimer2
 	    BCF		State, LTR
-	    BSF		State, Detected
-	    BCF		T2CON, TMR2ON		;DISABLE TIMER2
-	    BCF		State, VarL
-	    BCF		State, VarR
-	    RETURN				;return to ISR
+	    GOTO	DisableTimer2
 	    	    
 EnableTimer2
-	    BSF		T2CON, TMR2ON		;check the banks
-	    Return				;return to ISR
+	    BSF		T2CON, TMR2ON		
+	    RETURN				;Returns to ISR
+	    
+DisableTimer2
+	    BCF		T2CON, TMR2ON		;Disable Timer2
+	    CLRF	TMR2
+	    CLRF	OverflowCount
+	    
+	    BSF		State, Detected
+	    BCF		State, VarL
+	    BCF		State, VarR
+	    RETURN				;Returns to ISR
 	    
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;DisplayUpdate;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;Checks Display, Send Units/Tens, Complement Display
@@ -296,24 +313,22 @@ DisplayUpdate
 	    BCF		INTCON, TMR0IF		;Clear TMR0 Flag
 	    MOVLW	0X06			;Reinitialize TMR0
 	    MOVWF	TMR0
-	    
-	    MOVLW b'00011000'			;Complement Display
-	    XORWF PORTB, F
+	    MOVLW	b'00011000'		;Complement Display
+	    XORWF	PORTB, F
 ;the complement HAS to be here for the 7 segment to work probably
 ;2us between the MOVWF PORTD and the complement is not enough for the
 ;7segment to display accurate reslults.
-	    
 	    BTFSC	PORTB, UnitsSelect
 	    GOTO	UnitsDisplay
 	    MOVF	Tens, W
-	    GOTO	Send	    
+	    GOTO	Send
+	    
 UnitsDisplay	    
 	    MOVF	Units, W
+	    
 Send	    
 	    CALL	Table
 	    MOVWF	PORTD
-	    ;MOVLW b'00011000'			;Complement Display
-	    ;XORWF PORTB, F
 	    RETURN
 	    
 ;************************** Lookup Table ************************
@@ -335,20 +350,21 @@ Table
 ;Decrements HalfSecCounter, Complement Led and Buzzer If zero,
 ;Complement Led Only if not, and Turn off timer1
 HalfSecDelay
-
-	    BCF		PIR1, TMR1IF		;Check tha banks
+	    BCF		PIR1, TMR1IF
 	    BANKSEL	TMR1L				    
 	    MOVLW	0x28
 	    MOVWF	TMR1L
 	    MOVLW	0X0B
 	    MOVWF	TMR1H
 	    DECFSZ	HalfSecCounter, F
-	    GOTO	Continue    
+	    GOTO	Continue 
+	    
 Zero	    
-	    MOVLW b'01100000'			;Complement Led and Buzzer
-	    XORWF PORTB, F
-	    BCF		T1CON, TMR1ON		;check the banks
+	    MOVLW	b'01100000'		;Complement Led and Buzzer
+	    XORWF	PORTB, F
+	    BCF		T1CON, TMR1ON
 	    RETURN
+	    
 Continue	    
 	    MOVLW b'01000000'			;Complement Led
 	    XORWF PORTB, F
@@ -358,18 +374,17 @@ Continue
 ;Just over 1ms Delay with 16 Software postscale, when done Clear VarL/VarR
 ;and Turn off timer2
 LeftRightClear
-
-	    BCF		PIR2, TMR2IF		;Clear TMR2 Flag
-
+	    BCF		PIR1, TMR2IF		;Clear TMR2 Flag
 	    INCF	OverflowCount, F
 	    MOVLW	.16			;Assuming a clock of 4MHz, we need 
 	    SUBWF	OverflowCount, W	;245 * 16 * 16 * 16 = 1003520us
 	    BTFSS	STATUS, Z
 	    RETURN				
 
+	    CLRF	OverflowCount
 	    BCF		State, VarL
 	    BCF		State, VarR
-	    BCF		T2CON, TMR2ON		;check the banks
-	    Return
+	    BCF		T2CON, TMR2ON
+	    RETURN
 	    
-	    end
+	    END
