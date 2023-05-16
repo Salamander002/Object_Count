@@ -36,10 +36,6 @@
 ;FSR and Pin names defined by the header file are all capitalized    ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;                           Start of Code                            ;
-	    include		"p16f877A.inc"
-	    ; CONFIG
-	    ; __config 0x3F39
-	    __CONFIG _FOSC_XT & _WDTE_OFF & _PWRTE_OFF & _BOREN_OFF & _LVP_OFF & _CPD_OFF & _WRT_OFF & _CP_OFF
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;			Header files				     ;
 	    include		"p16f877A.inc"
@@ -120,6 +116,7 @@ Initial
 	    BCF		PIR2, TMR2IF		;All Flags cleared
 	    BSF		PIE2, TMR2IE		;enable timer2, we want 32 post*pre scale
 	    BSF		PIE1, TMR1IE
+
 	    MOVLW	.244			;244 + 1 = 245
 	    MOVWF	PR2
 ;to create just over a 1 sec delay, 1s and 3520us
@@ -158,7 +155,7 @@ Initial
 	    MOVLW	b'00001000'		;one of them has to start on
 	    MOVWF	PORTB
 	    
-	   
+	    
 
 ;the program must always start from 00 not Cmin with our implementaion, because BCD
 ;doesn't update unless we increment/decrement, we can initialize the Units/Digits/Count
@@ -255,7 +252,6 @@ ISR
 	    MOVWF	STATUS
 	    MOVF	ContextW, W
 	    RETFIE 
-      
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;Sensors;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;Checks SenseLeft, Complement VarL/VarR
 ;Enable Timer2 module or update the state
@@ -333,6 +329,7 @@ Table
 	    RETLW	B'10000000'		;'8'
 	    RETLW	B'10010000'		;'9'
 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;HalfSecDelay;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;Decrements HalfSecCounter, Complement Led and Buzzer If zero,
 ;Complement Led Only if not, and Turn off timer1
@@ -362,7 +359,6 @@ Continue
 LeftRightClear
 
 	    BCF		PIR2, TMR2IF		;Clear TMR2 Flag
-
 
 	    INCF	OverflowCount, F
 	    MOVLW	.16			;Assuming a clock of 4MHz, we need 
