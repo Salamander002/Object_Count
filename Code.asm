@@ -92,7 +92,7 @@ VarR        equ         3			;bit 3 of State
 ;Copied from Exp8's labSheet                                         ;
 ;Used to save WReg and STATUS Register into other temporary registers;
 PUSH	    macro
-	    movwf	WTemp			;ContextW must be reserved in all banks
+	    movwf	WTemp			;WTemp must be reserved in all banks
 	    swapf	STATUS, W		;store in W without affecting status bits
 	    movwf	StatusTemp		;save STATUS
 	    endm
