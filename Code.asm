@@ -8,7 +8,7 @@
 ;Version 0 : built the basic structure for the code, not a final or  ;
 ;            testing version.                                        ;
 ;Version 1 : Testing version.					     ;
-;Version 1 : Semi-Final version.					     ;
+;Version 1 : Semi-Final version.				     ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;TODO:                                                               ; 
 ;	Make better comments					     ;
@@ -125,7 +125,7 @@ Initial
 	    
 	    BCF		PIR1, TMR1IF
 	    BCF		PIR1, TMR2IF		;All Flags cleared
-	    BSF		PIE1, TMR2IE		;enable timer2, we want 32 post*pre scale
+	    BSF		PIE1, TMR2IE		;enable timer2
 	    BSF		PIE1, TMR1IE
 
 	    MOVLW	.244			;244 + 1 = 245
@@ -278,16 +278,14 @@ Sensors
 	    GOTO	Left
 	    
 Right	    
-	    MOVLW	b'00010000'		;Complementing VarR without checking PORTB SenseRight
-	    XORWF	State, F
+	    BSF		State, VarR		;Complementing VarR without checking PORTB SenseRight
 	    BTFSS	State, VarL	
 	    GOTO	EnableTimer2
 	    BSF		State, LTR
 	    GOTO	DisableTimer2
 	   
 Left	    
-	    MOVLW	b'00001000'		;Complement VarL
-	    XORWF	State, F	
+	    BSF		State, VarL		;Complementing VarL
 	    BTFSS	State, VarR
 	    GOTO	EnableTimer2
 	    BCF		State, LTR
