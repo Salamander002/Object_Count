@@ -57,8 +57,8 @@
             Tens
             Temp
 ;version 0 Variables ends here, next versions add below and add comment
-	    ContextW
-	    ContextS
+	    WTemp
+	    StatusTemp
 	    HalfSecCounter
 	    OverflowCount
             endc
