@@ -286,7 +286,6 @@ ISR
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;Sensors;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;Checks SenseLeft, Complement VarL/VarR
 ;Enable Timer2 module or update the state
-;uses Complements to account for objects that go between the sensors and returns from where it came from
 Sensors
 	    BCF		INTCON, INTF
 	    BTFSC	PORTB, SenseLeft	;skip if Left Sensor did not detect any thing
